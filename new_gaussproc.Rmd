@@ -1,0 +1,233 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+trim_data <- trim_data %>% mutate(density=1/area)
+
+test_data_2 <- trim_data %>%
+  mutate(
+    timestep = round(second/60),
+    group_id = as.numeric(as.factor(trial_id))
+  ) %>%
+  group_by(timestep, trial_id, group_id, groupsize_phase, pool_temp_scaled, fish_length_scaled, phase) %>%
+  summarise(area=median(density), group_size=median(group_size)) %>%
+  mutate(group_size_id = as.integer(factor(group_size, levels = c(5, 10, 20))))
+trim_data
+
+```
+
+
+```{r}
+num_timesteps <- length(unique(test_data$timestep))
+num_groups <- length(unique(test_data$trial_id))
+
+area <- matrix(0, num_timesteps, num_groups)
+group_size <- matrix(0, num_timesteps, num_groups)
+phase <- matrix(0, num_timesteps, num_groups)
+groupsize_phase <- matrix(0, num_timesteps, num_groups)
+pool_temp <- matrix(0, num_timesteps, num_groups)
+fish_length <- matrix(0, num_timesteps, num_groups)
+group_id <- matrix(0, num_timesteps, num_groups)
+
+timesteps <- matrix(0, num_timesteps, num_groups)
+
+for (i in 1:nrow(test_data)){
+  x <- test_data[i, ]
+  area[x$timestep, x$group_id] <- x$area
+  group_size[x$timestep, x$group_id] <- x$group_size_id
+  phase[x$timestep, x$group_id] <- 1 + 1 * (x$timestep >= 8)
+  groupsize_phase[x$timestep, x$group_id] <- x$groupsize_phase
+  pool_temp[x$timestep, x$group_id] <- x$pool_temp_scaled
+  fish_length[x$timestep, x$group_id] <- x$fish_length_scaled
+  group_id[x$timestep, x$group_id] <- x$group_id
+  timesteps[x$timestep, x$group_id] <- x$timestep
+}
+
+
+```
+
+```{r}
+model <- cmdstanr::cmdstan_model("m_baremin_gaussproc.stan") # beta
+# model <- cmdstanr::cmdstan_model("m_gaussian_gaussproc.stan") # normal
+
+
+model_data <- list(
+  num_timesteps=num_timesteps,
+  num_groups=num_groups,
+  Y=area,
+  phase=phase,
+  groupsize=group_size,
+  groupsize_phase=groupsize_phase,
+  pool_temp=pool_temp,
+  fish_length=fish_length,
+  group_id=group_id,
+  timesteps=timesteps,
+  times=1:num_timesteps,
+  priors_only=0
+)
+
+fit <- model$sample(model_data, parallel_chains=4, refresh=500)
+```
+
+
+```{r}
+fit$summary("b_groupsize_phase")
+```
+
+
+## Density
+```{r}
+plot(fit$summary("b_groupsize_phase")$median, type = "b", pch=19,
+     ylim=c(min(as.vector(fit$summary("b_groupsize_phase")[6])$q5), 
+            max(as.vector(fit$summary("b_groupsize_phase")[7])$q95)
+            )
+     )
+segments(1:6, as.vector(fit$summary("b_groupsize_phase")[6])$q5, 1:6, as.vector(fit$summary("b_groupsize_phase")[7])$q95)
+```
+
+```{r}
+predicted <- as_tibble(fit$draws("y_predicted", format="matrix")) %>% select_if(~ !any(is.na(.)))
+
+plot(density(model_data$Y), col="black") # white for prior checks!
+for (i in 1:100) {
+  for (g in num_groups){
+    predicted_vals <- predicted[sample(1:nrow(predicted), size=1), g]
+    lines(density(predicted_vals), col="cyan3")
+  }
+}
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(test_data, aes(x=timestep, y=area, groups=factor(groupsize_phase), color=factor(group_size))) +
+  geom_smooth() +
+  geom_point() +
+  scale_color_manual(values=c("#b73779", "#33BDCD", "#440154")) +
+  theme_classic() +
+  geom_vline(xintercept=8, linetype="dashed", col="darkgrey") +
+  labs(col="Group size", y=expression(paste("Density")), x="Time (minutes)")
+ggsave("cohesion_data_density.png", width=10, height=5)
+
+ggplot(trim_data, aes(x=second, y=area, groups=factor(phase), color=factor(phase))) +
+  geom_smooth() +
+  # geom_point() +
+  scale_color_manual(values=c("#b73779", "#33BDCD", "#440154")) +
+  theme_classic() +
+  # geom_vline(xintercept=8, linetype="dashed", col="darkgrey") +
+  labs(col="Group size", y=expression(paste("Harmonic mean area (", cm^2, ")")), x="Time (minutes)")
+
+ggplot(trim_data, aes(x=second, y=area, groups=factor(phase), color=factor(group_size))) +
+  geom_smooth() +
+  # geom_point() +
+  scale_color_manual(values=c("#b73779", "#33BDCD", "#440154")) +
+  theme_classic() +
+  # geom_vline(xintercept=8, linetype="dashed", col="darkgrey") +
+  labs(col="Group size", y=expression(paste("Harmonic mean area (", cm^2, ")")), x="Time (minutes)")
+
+```
+
+Groupsize:phase combinations
+1 - 5 before
+2 - 5 during
+3 - 10 before
+4 - 10 during
+5 - 20 before
+6 - 20 during
+
+```{r}
+
+```
+
+
+
+```{r}
+library(ggjoy)
+
+sml_joy <- ggplot(subset(test_data, group_size==5), aes(x=area, y=factor(-timestep), fill=factor(timestep))) +
+  geom_joy(scale=0.9) +
+  theme_joy() +
+  # xlim(-1, 1) +
+  ggtitle("Small group")
+
+med_joy <- ggplot(subset(test_data, group_size==10), aes(x=area, y=factor(-timestep), fill=factor(timestep))) +
+  geom_joy(scale=0.9) +
+  theme_joy() +
+  # xlim(-1, 1) +
+  ggtitle("Medium group")
+
+lrg_joy <- ggplot(subset(test_data, group_size==20), aes(x=area, y=factor(-timestep), fill=factor(timestep))) +
+  geom_joy(scale=0.9) + 
+  theme_joy() +
+  # xlim(-1, 1) +
+  ggtitle("Large group")
+
+sml_joy
+med_joy
+lrg_joy
+```
+
+```{r fig.height = 5, fig.width = 15}
+library(deldir)
+library(ggforce)
+citation()
+
+p_s1 <- ggplot(t_20_1512 %>% filter(Second == 1), aes(x=X, y=Y))+
+  geom_voronoi_tile(aes(fill=Fish_ID), bound = c(0, 150, 0, 150)) +
+  geom_delaunay_segment2() +
+  geom_point() +
+  theme_classic() +
+  # geom_text(aes(label = stat(vorarea)),
+  #   stat = 'delvor_summary', switch.centroid = TRUE) +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1))
+
+
+trim_data
+
+```
+
+```{r}
+ggplot(trim_data, aes(x=1:nrow(trim_data), y=sort(area))) +
+  geom_point()
+
+
+```
+
+
+
+```{r}
+ggplot(test_data_2, aes(x=factor(timestep), y=area, color=factor(group_size))) +
+  # geom_pointrange(ymin=median(area)-sd(area), ymax=median(area)+sd(area)) +
+  geom_boxplot() +
+  # geom_point() +
+  facet_wrap(~phase, scales = "free") +
+  ylim(0, 0.6) +
+  scale_color_manual(values=c("#B73779", "#33BDCD", "#440154")) +
+  theme_classic() +
+  # geom_vline(xintercept=8.5, linetype="dashed", col="darkgrey") +
+  labs(col="Group size", y=expression(paste("Density")), x="Time (minutes)")
+# ggsave("cohesion_data_density.png", width=10, height=5)
+
+```
+Check that the middle values go into the right timestep.
+
+```{r}
+test_data_2
+```
+
+```{r}
+trim_data_2 <- trim_data %>% mutate(minute=round(second/60) + 1)
+trim_data_2 %>% select(phase, second, minute)
+```
+391 - 432
+
+```{r}
+max(trim_data_2$second)
+tail(sort(trim_data_2$second),100)
+
+840/60
+```
+
