@@ -1,0 +1,525 @@
+---
+title: "Voronois"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load packages and plotting params
+```{r cars}
+# Data wrangling
+library(deldir) # for voronoi polys
+library(tidyverse)
+library(glue)
+
+# Modelling
+library(rstan)
+
+# Plotting
+library(ggplot2)
+library(ggforce)
+library(wesanderson)
+library(patchwork)
+colour_pal <- wes_palette("GrandBudapest1", n=3)
+
+# Networks
+library(igraph)
+
+```
+
+
+```{r}
+tracks %>% group_by(Second) 
+```
+
+
+## Load and sort data
+```{r pressure, echo=FALSE}
+track_data <- read.csv('../../Tracking data/Updated/all_binned_data.csv')
+tracks <- track_data %>% select(Second, ANGLE, SPEED, X, Y, Fish_ID, Group_size, Trial_ID)
+sec_counts <- tracks %>% group_by(Trial_ID, Second) %>% summarise(count = n_distinct(Fish_ID))
+
+trial_levels <- c('during-5-2911', 'during-5-0412', 'during-5-0712', 'during-5-1012', 'during-5-1412',
+  'during-10-3011', 'during-10-0312', 'during-10-0812', 'during-10-1212', 'during-10-1312',
+  'during-20-0212', 'during-20-0612', 'during-20-0912', 'during-20-1112', 'during-20-1512')
+```
+# Let's visualise some voronois
+## Plot some consecutive seconds to get an idea of variation and look at the plots
+```{r }
+t_20_1512 <- tracks %>% filter(Trial_ID == "during-20-1512")
+t_20_1112 <- tracks %>% filter(Trial_ID == "during-20-1112")
+t_20_0912 <- tracks %>% filter(Trial_ID == "during-20-0912")
+t_20_0612 <- tracks %>% filter(Trial_ID == "during-20-0612")
+t_20_0212 <- tracks %>% filter(Trial_ID == "during-20-0212")
+
+t_10_3011 <- tracks %>% filter(Trial_ID == "during-10-3011")
+t_10_0812 <- tracks %>% filter(Trial_ID == "during-10-0812")
+t_10_0312 <- tracks %>% filter(Trial_ID == "during-10-0312")
+t_10_1212 <- tracks %>% filter(Trial_ID == "during-10-1212")
+t_10_1312 <- tracks %>% filter(Trial_ID == "during-10-1312")
+
+t_5_2911 <- tracks %>% filter(Trial_ID == "during-5-2911")
+t_5_1412 <- tracks %>% filter(Trial_ID == "during-5-1412")
+t_5_1012 <- tracks %>% filter(Trial_ID == "during-5-1012")
+t_5_0712 <- tracks %>% filter(Trial_ID == "during-5-0712")
+t_5_0412 <- tracks %>% filter(Trial_ID == "during-5-0412")
+```
+
+```{r fig.height = 5, fig.width = 15}
+p_s1 <- ggplot(t_20_1512 %>% filter(Second == 1), aes(x=X, y=Y))+
+  geom_voronoi_tile(aes(fill=Fish_ID), bound = c(0, 150, 0, 150)) +
+  # geom_delaunay_segment2() +
+  geom_point() +
+  theme_classic() +
+  # geom_text(aes(label = stat(vorarea)),
+  #   stat = 'delvor_summary', switch.centroid = TRUE) +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1))
+
+p_s2 <- ggplot(t_20_1512 %>% filter(Second == 2), aes(x=X, y=Y))+
+  geom_voronoi_tile(aes(fill=Fish_ID), bound = c(0, 150, 0, 150)) +
+  # geom_delaunay_segment2() +
+  geom_point() +
+  # geom_text(aes(label = stat(vorarea)),
+  #   stat = 'delvor_summary', switch.centroid = TRUE) +
+  theme_classic() +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1))
+
+p_s3 <- ggplot(t_20_1512 %>% filter(Second == 3), aes(x=X, y=Y))+
+  geom_voronoi_tile(aes(fill=Fish_ID), bound = c(0, 150, 0, 150)) +
+  # geom_delaunay_segment2() +
+  geom_point() +
+  # geom_text(aes(label = stat(vorarea)),
+  #   stat = 'delvor_summary', switch.centroid = TRUE) +
+  theme_classic() +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1))
+
+(p_s1 | p_s2 | p_s3) + plot_layout(guides="collect")
+```
+
+## Make functions to get some voronoi polygon stats over a set period of time
+```{r}
+get_voronoi_stats <- function(trial_id, second){
+   temp_tracks_df <- tracks %>% filter(Trial_ID == trial_id, Second == second)
+   tesselation <- tryCatch({deldir(temp_tracks_df$X, temp_tracks_df$Y)}, 
+                           warning = function(warn) {
+                             print(paste("MY WARNING: ", warn))
+                           }, error = function(cnd) {
+                               return(NULL)
+                             })
+   return(tesselation$summary)
+}
+
+get_first_nsecs <- function(trial, n){
+  second <- c()
+  area <- c()
+  group_size <- c()
+  trial_id <- c()
+  # fish_id <- c()
+  # speed <- c()
+  for (i in 1:n){
+    mini_df <- tracks %>% filter(Trial_ID == trial, Second == i)
+    # fish <- mini_df$Fish_ID
+    # fish_id <- c(fish_id, fish)
+    # sp <- mini_df$SPEED
+    # speed <- c(speed, sp)
+    
+    voronoi_stats_df <- get_voronoi_stats(trial, i)
+    area <- c(area, voronoi_stats_df$dir.area)
+    second <- c(second, rep(i, length(voronoi_stats_df$dir.area)))
+    gs <- as.integer(tracks %>% filter(Trial_ID==trial) %>% distinct(Group_size))
+    group_size <- c(group_size, rep(gs, length(voronoi_stats_df$dir.area)))
+    trial_id <- c(trial_id, rep(trial, length(voronoi_stats_df$dir.area)))
+
+  }
+  # df <- data.frame(second, area, group_size, trial_id, fish_id, speed)
+  df <- data.frame(second, area, group_size, trial_id)
+
+  return(df)
+}
+
+```
+
+## Get the voronois for the first 30 seconds
+```{r }
+nsecs <- 30
+
+vor_20_1512_s1 <- get_first_nsecs('during-20-1512', nsecs)
+vor_20_1112_s1 <- get_first_nsecs('during-20-1112', nsecs)
+vor_20_0912_s1 <- get_first_nsecs('during-20-0912', nsecs)
+vor_20_0612_s1 <- get_first_nsecs('during-20-0612', nsecs)
+vor_20_0212_s1 <- get_first_nsecs('during-20-0212', nsecs)
+
+vor_10_3011_s1 <- get_first_nsecs('during-10-3011', nsecs)
+vor_10_0812_s1 <- get_first_nsecs('during-10-0812', nsecs)
+vor_10_0312_s1 <- get_first_nsecs('during-10-0312', nsecs)
+vor_10_1312_s1 <- get_first_nsecs('during-10-1312', nsecs)
+vor_10_1212_s1 <- get_first_nsecs('during-10-1212', nsecs)
+
+vor_5_2911_s1 <- get_first_nsecs('during-5-2911', nsecs)
+vor_5_1412_s1 <- get_first_nsecs('during-5-1412', nsecs)
+vor_5_1012_s1 <- get_first_nsecs('during-5-1012', nsecs)
+vor_5_0412_s1 <- get_first_nsecs('during-5-0412', nsecs)
+vor_5_0712_s1 <- get_first_nsecs('during-5-0712', nsecs)
+
+
+vor_areas_df <- rbind(vor_20_1512_s1, vor_20_0212_s1, vor_20_1112_s1, vor_20_0912_s1, vor_20_0612_s1, 
+                      vor_10_3011_s1, vor_10_0312_s1, vor_10_1212_s1, vor_10_1312_s1, vor_10_0812_s1,
+                      vor_5_2911_s1, vor_5_1412_s1, vor_5_1012_s1, vor_5_0712_s1, vor_5_0412_s1)
+vor_areas_df$phase <- rep("during", times=nrow(vor_areas_df))
+
+```
+
+```{r}
+# Get pool temps
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-5-2911'] = 23.6
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-10-3011'] = 24
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-20-0212'] = 23.8
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-10-0312'] = 24.2
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-5-0412'] = 24.3
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-20-0612'] = 24.5
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-10-0812'] = 24.2
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-20-0912'] = 24.4
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-5-1012'] = 24.1
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-20-1112'] = 24.2
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-10-1212'] = 24.5
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-10-1312'] = 24
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-5-1412'] = 25
+vor_areas_df$pool_temp[vor_areas_df$trial_id == 'during-20-1512'] = 23.8
+
+# Get fish lengths
+length_data <- read.csv('../../Tracking data/all_lengths_data.csv')
+
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-5-2911'] = mean(length_data$Length[length_data$Date == '2911'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-10-3011'] = mean(length_data$Length[length_data$Date == '3011'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-20-0212'] = mean(length_data$Length[length_data$Date == '212'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-10-0312'] = mean(length_data$Length[length_data$Date == '312'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-5-0412'] = mean(length_data$Length[length_data$Date == '412'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-20-0612'] = mean(length_data$Length[length_data$Date == '612'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-10-0812'] = mean(length_data$Length[length_data$Date == '812'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-20-0912'] = mean(length_data$Length[length_data$Date == '912'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-5-1012'] = mean(length_data$Length[length_data$Date == '1012'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-20-1112'] = mean(length_data$Length[length_data$Date == '1112'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-10-1212'] = mean(length_data$Length[length_data$Date == '1212'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-10-1312'] = mean(length_data$Length[length_data$Date == '1312'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-5-1412'] = mean(length_data$Length[length_data$Date == '1412'])
+vor_areas_df$fish_length[vor_areas_df$trial_id == 'during-20-1512'] = mean(length_data$Length[length_data$Date == '1512'])
+
+```
+
+
+## Plot areas by group size
+```{r fig.height = 7, fig.width = 10}
+p_vor_areas <- ggplot(vor_areas_df, aes(x=factor(group_size), y=area)) + 
+  geom_boxplot() +
+  geom_boxplot(aes(fill=factor(trial_id, levels = trial_levels)), alpha=0.5) +
+  labs(x = "Group size",
+       y = "Voronoi polygon area",
+       fill="Trial ID") +
+  theme(plot.title = element_text(size=15)) +
+  # geom_hline(aes(yintercept=0.1256)) + # line to show rough null
+  theme_classic()
+p_vor_areas
+
+p_temp <- ggplot(vor_areas_df, aes(x=factor(pool_temp), y=area)) +
+  geom_boxplot() +
+  theme_classic()
+
+p_length <- ggplot(vor_areas_df, aes(x=factor(fish_length), y=area)) +
+  geom_boxplot() +
+  theme_classic()
+
+(p_temp | p_length)
+```
+
+```{r}
+get_first_nsecs <- function(trial, n){
+  second <- c()
+  area <- c()
+  group_size <- c()
+  trial_id <- c()
+
+  # fish_id <- c()
+  # speed <- c()
+  for (i in 1:n){
+    x <- c()
+    y <- c()
+    mini_df <- tracks %>% filter(Trial_ID == trial, Second == i)
+    # fish <- mini_df$Fish_ID
+    # fish_id <- c(fish_id, fish)
+    # sp <- mini_df$SPEED
+    # speed <- c(speed, sp)
+    
+    voronoi_stats_df <- get_voronoi_stats(trial, i)
+    area <- c(area, voronoi_stats_df$dir.area)
+    second <- c(second, rep(i, length(voronoi_stats_df$dir.area)))
+    gs <- as.integer(tracks %>% filter(Trial_ID==trial) %>% distinct(Group_size))
+    group_size <- c(group_size, rep(gs, length(voronoi_stats_df$dir.area)))
+    trial_id <- c(trial_id, rep(trial, length(voronoi_stats_df$dir.area)))
+    # for (fish in nrow(mini_df)){
+    #   x <- c(x, mini_df$X[fish])
+    #   y <- c(y, mini_df$Y[fish])
+    # }
+  }
+  # df <- data.frame(second, area, group_size, trial_id, fish_id, speed)
+  df <- data.frame(second, x, y, area, group_size, trial_id)
+
+  return(df)
+}
+
+
+```
+
+
+# Treating it as a time series
+## Get full time series of areas
+```{r}
+nsecs <- max(tracks$Second)
+
+vor_20_1512_full <- get_first_nsecs('during-20-1512', nsecs)
+vor_20_1112_full <- get_first_nsecs('during-20-1112', nsecs)
+vor_20_0912_full <- get_first_nsecs('during-20-0912', nsecs)
+vor_20_0612_full <- get_first_nsecs('during-20-0612', nsecs)
+vor_20_0212_full <- get_first_nsecs('during-20-0212', nsecs)
+
+vor_10_3011_full <- get_first_nsecs('during-10-3011', nsecs)
+vor_10_0812_full <- get_first_nsecs('during-10-0812', nsecs)
+vor_10_0312_full <- get_first_nsecs('during-10-0312', nsecs)
+vor_10_1312_full <- get_first_nsecs('during-10-1312', nsecs)
+vor_10_1212_full <- get_first_nsecs('during-10-1212', nsecs)
+
+vor_5_2911_full <- get_first_nsecs('during-5-2911', nsecs)
+vor_5_1412_full <- get_first_nsecs('during-5-1412', nsecs)
+vor_5_1012_full <- get_first_nsecs('during-5-1012', nsecs)
+vor_5_0412_full <- get_first_nsecs('during-5-0412', nsecs)
+vor_5_0712_full <- get_first_nsecs('during-5-0712', nsecs)
+
+
+vor_full_df <- rbind(vor_20_1512_full, vor_20_1112_full, vor_20_0912_full, vor_20_0612_full, vor_20_0212_full, 
+                      vor_10_3011_full, vor_10_0312_full, vor_10_1312_full, vor_10_0812_full, vor_10_1212_full,
+                      vor_5_2911_full, vor_5_1412_full, vor_5_1012_full, vor_5_0412_full, vor_5_0712_full)
+vor_full_df$phase <- rep("during", times=nrow(vor_full_df))
+
+```
+
+
+## Plot time series
+```{r }
+p_timeseries <- ggplot(vor_full_df, aes(x=second, y=area, colour=factor(group_size))) +
+  # geom_point() +
+  geom_smooth() +
+  scale_color_manual(values = colour_pal) +
+  theme_classic()
+p_timeseries
+```
+There area definitely some differences between the group sizes here -- geom_smooth doesn't show us everything though so we can't infer too much from this. What we're actually interested in is cohesion, so let's plot 1/areas so it's more interpretable.
+
+## Plot inverse areas -- i.e. cohesion metric
+```{r echo=FALSE}
+vor_full_df$inv_area <- 1/vor_full_df$area
+
+p_timeseries_inv <- ggplot(vor_full_df, aes(x=second, y=inv_area, colour=factor(group_size))) +
+  # geom_point() +
+  geom_smooth() +
+  scale_color_manual(values= colour_pal) +
+  theme_classic()
+p_timeseries_inv
+
+```
+This looks cool -- this is what we predicted! Big groups are less fearful so more spread out?
+
+
+# Networks
+## Functions to get association dataframe and plot the network
+```{r}
+get_assoc_df <- function(trial, time1, time2){
+  association_df <- data.frame(timestamp = numeric(), fish_1 = numeric(), fish_2 = numeric(), distance = numeric(), interaction = numeric())
+  for(t in time1:time2){
+    df_temp <- tracks %>% filter(Trial_ID == trial, Second == t)
+    fish_ids <- unique(df_temp$Fish_ID)
+    for (i in fish_ids){
+      for (j in fish_ids){
+        if (i < j) {
+          fish_i = df_temp %>% filter(Fish_ID == i)
+          fish_j = df_temp %>% filter(Fish_ID == j)
+          fish_dist =  sqrt((fish_i$X - fish_j$X)^2 + (fish_i$Y- fish_j$Y)^2)
+          if (fish_dist < 6){
+            interacting <- 1
+          } else {
+            interacting <- 0
+          }
+          association_df <- rbind(association_df, list(timestamp = t, fish_1 = fish_i$Fish_ID, fish_2 = fish_j$Fish_ID, distance = fish_dist, interaction = interacting))
+        }
+      }
+    }
+  }
+  return(association_df)
+}
+
+get_network <- function(assoc_df){
+  edge_df <- assoc_df %>%
+            group_by(fish_1, fish_2) %>%
+            summarise(count = sum(interaction), total = n()) %>%
+            mutate(weight = count/total)
+  g <- graph_from_edgelist(as.matrix(1+edge_df[,1:2]), directed = F)
+  E(g)$weight = edge_df$weight
+  coords <- layout_nicely(g)
+  p <- plot(g, edge.width=E(g)$weight*7, vertex.color = 'cyan4', vertex.label.color = 'white', layout=coords)
+  invisible(p)
+}
+
+```
+
+## Get networks for first 60s for each trial
+```{r}
+lrg_1512_e <- get_assoc_df('during-20-1512', 1, 60)
+lrg_1112_e <- get_assoc_df('during-20-1112', 1, 60)
+lrg_0912_e <- get_assoc_df('during-20-0912', 1, 60)
+lrg_0612_e <- get_assoc_df('during-20-0612', 1, 60)
+
+mid_3011_e <- get_assoc_df('during-10-3011', 1, 60)
+mid_0812_e <- get_assoc_df('during-10-0812', 1, 60)
+mid_0312_e <- get_assoc_df('during-10-0312', 1, 60)
+mid_1312_e <- get_assoc_df('during-10-1312', 1, 60)
+
+sml_3011_e <- get_assoc_df('during-5-2911', 1, 60)
+sml_1412_e <- get_assoc_df('during-5-1412', 1, 60)
+sml_1012_e <- get_assoc_df('during-5-1012', 1, 60)
+sml_0412_e <- get_assoc_df('during-5-0412', 1, 60)
+
+```
+
+```{r}
+p_lrg_1512_e <- get_network(lrg_1512_e) # room 42 fish
+p_lrg_1112_e <- get_network(lrg_1112_e)
+p_lrg_0912_e <- get_network(lrg_0912_e)
+p_lrg_0612_e <- get_network(lrg_0612_e)
+
+p_mid_3011_e <- get_network(mid_3011_e)
+p_mid_0812_e <- get_network(mid_0812_e)
+p_mid_0312_e <- get_network(mid_0312_e)
+p_mid_1312_e <- get_network(mid_1312_e)
+
+p_sml_3011_e <- get_network(sml_3011_e)
+p_sml_1412_e <- get_network(sml_1412_e)
+p_sml_1012_e <- get_network(sml_1012_e)
+p_sml_0412_e <- get_network(sml_0412_e)
+```
+
+```{r}
+lrg_1512_l <- get_assoc_df('during-20-1512', 360, 420)
+lrg_1112_l <- get_assoc_df('during-20-1112', 360, 420)
+lrg_0912_l <- get_assoc_df('during-20-0912', 360, 420)
+lrg_0612_l <- get_assoc_df('during-20-0612', 360, 420)
+
+mid_3011_l <- get_assoc_df('during-10-3011', 360, 420)
+mid_0812_l <- get_assoc_df('during-10-0812', 360, 420)
+mid_0312_l <- get_assoc_df('during-10-0312', 360, 420)
+mid_1312_l <- get_assoc_df('during-10-1312', 360, 420)
+
+sml_3011_l <- get_assoc_df('during-5-2911', 360, 420)
+sml_1412_l <- get_assoc_df('during-5-1412', 360, 420)
+sml_1012_l <- get_assoc_df('during-5-1012', 360, 420)
+sml_0412_l <- get_assoc_df('during-5-0412', 360, 420)
+
+```
+
+```{r}
+p_lrg_1512_l <- get_network(lrg_1512_l)
+p_lrg_1112_l <- get_network(lrg_1112_l)
+p_lrg_0912_l <- get_network(lrg_0912_l)
+p_lrg_0612_l <- get_network(lrg_0612_l)
+
+p_mid_3011_l <- get_network(mid_3011_l)
+p_mid_0812_l <- get_network(mid_0812_l)
+p_mid_0312_l <- get_network(mid_0312_l)
+p_mid_1312_l <- get_network(mid_1312_l)
+
+p_sml_3011_l <- get_network(sml_3011_l)
+p_sml_1412_l <- get_network(sml_1412_l)
+p_sml_1012_l <- get_network(sml_1012_l)
+p_sml_0412_l <- get_network(sml_0412_l)
+```
+
+```{r}
+med_areas <- vor_full_df %>% group_by(trial_id, group_size, phase, pool_temp, fish_length) %>% summarise(median=median(area))
+
+p_med_areas <- ggplot(med_areas, aes(x=factor(group_size), y=median)) + 
+  geom_boxplot() +
+  ylim(0, 1500) +
+  ggtitle("Predator stimulus visible")
+```
+
+```{r}
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-5-2911'] = 23.6
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-10-3011'] = 24
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-20-0212'] = 23.8
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-10-0312'] = 24.2
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-5-0412'] = 24.3
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-20-0612'] = 24.5
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-5-0712'] = 24.3
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-10-0812'] = 24.2
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-20-0912'] = 24.4
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-5-1012'] = 24.1
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-20-1112'] = 24.2
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-10-1212'] = 24.5
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-10-1312'] = 24
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-5-1412'] = 25
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-20-1512'] = 23.8
+
+# Get fish lengths
+length_data <- read.csv('../../Tracking data/all_lengths_data.csv')
+
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-5-2911'] = mean(length_data$Length[length_data$Date == '2911'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-10-3011'] = mean(length_data$Length[length_data$Date == '3011'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-20-0212'] = mean(length_data$Length[length_data$Date == '212'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-10-0312'] = mean(length_data$Length[length_data$Date == '312'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-5-0412'] = mean(length_data$Length[length_data$Date == '412'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-20-0612'] = mean(length_data$Length[length_data$Date == '612'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-5-0712'] = mean(length_data$Length[length_data$Date == '712'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-10-0812'] = mean(length_data$Length[length_data$Date == '812'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-20-0912'] = mean(length_data$Length[length_data$Date == '912'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-5-1012'] = mean(length_data$Length[length_data$Date == '1012'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-20-1112'] = mean(length_data$Length[length_data$Date == '1112'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-10-1212'] = mean(length_data$Length[length_data$Date == '1212'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-10-1312'] = mean(length_data$Length[length_data$Date == '1312'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-5-1412'] = mean(length_data$Length[length_data$Date == '1412'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-20-1512'] = mean(length_data$Length[length_data$Date == '1512'])
+```
+
+```{r}
+vor_full_df %>% arrange(second)
+```
+
+```{r}
+lrg_1512_l
+```
+
+
+```{r}
+library(bisonR)
+
+sim_data <- simulate_edge_model("binary", aggregated = TRUE)
+df <- sim_data$df_sim
+
+lrg_1512_l$duration <- 1
+lrg_1512_l$fish_1 <- factor(lrg_1512_l$fish_1)
+lrg_1512_l$fish_2 <- factor(lrg_1512_l$fish_2)
+
+my_data <- lrg_1512_l
+
+priors <- get_default_priors("binary")
+
+fit_edge <- edge_model(
+  (interaction | duration) ~ dyad(fish_1, fish_2), 
+  data=my_data, 
+  data_type="binary",
+  priors=priors
+)
+
+plot_network(fit_edge)
+```
+
