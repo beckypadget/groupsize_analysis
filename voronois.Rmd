@@ -489,37 +489,3 @@ vor_full_df$fish_length[vor_full_df$trial_id == 'during-10-1312'] = mean(length_
 vor_full_df$fish_length[vor_full_df$trial_id == 'during-5-1412'] = mean(length_data$Length[length_data$Date == '1412'])
 vor_full_df$fish_length[vor_full_df$trial_id == 'during-20-1512'] = mean(length_data$Length[length_data$Date == '1512'])
 ```
-
-```{r}
-vor_full_df %>% arrange(second)
-```
-
-```{r}
-lrg_1512_l
-```
-
-
-```{r}
-library(bisonR)
-
-sim_data <- simulate_edge_model("binary", aggregated = TRUE)
-df <- sim_data$df_sim
-
-lrg_1512_l$duration <- 1
-lrg_1512_l$fish_1 <- factor(lrg_1512_l$fish_1)
-lrg_1512_l$fish_2 <- factor(lrg_1512_l$fish_2)
-
-my_data <- lrg_1512_l
-
-priors <- get_default_priors("binary")
-
-fit_edge <- edge_model(
-  (interaction | duration) ~ dyad(fish_1, fish_2), 
-  data=my_data, 
-  data_type="binary",
-  priors=priors
-)
-
-plot_network(fit_edge)
-```
-
