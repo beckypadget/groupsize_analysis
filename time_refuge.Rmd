@@ -1,0 +1,97 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+```
+
+
+```{r}
+inspection_data$Time_refuge <- 1 - (inspection_data$Total_time / 420) # 1 - (time not in refuge / total time)
+```
+
+```{r}
+all_refuge_data$Trial_Date <- str_sub(all_refuge_data$Trial_ID, start=-4)
+```
+
+
+```{r}
+ggplot(inspection_data, aes(x = factor(Group_size), y = Time_refuge)) +
+  geom_boxplot()
+```
+
+```{r}
+refuge_model_data <- list(
+  N = nrow(inspection_data),
+  N_trials = length(unique(inspection_data$Trial_ID)),
+  inspecting = inspection_data$Time_refuge,
+  groupsize_id = as.integer(factor(inspection_data$Group_size, levels = c(5, 10, 20))),
+  temp = inspection_data$pool_temp_scaled,
+  fish_length = inspection_data$fish_length_scaled,
+  trial_id = as.integer(factor(inspection_data$Trial_ID)),
+  fixed_prior = 1,
+  random_prior = 1,
+  kappa_prior = 20,
+  priors_only = 0
+)
+
+refuge_model <- cmdstan_model('mod_inspection.stan')
+refuge_fit <- refuge_model$sample(refuge_model_data, parallel_chains = 4, refresh = 500)
+
+```
+
+```{r}
+predicted <- refuge_fit$draws("predicted", format="matrix")
+
+plot(density(refuge_model_data$inspecting), col="black") # white for prior checks!
+for (i in 1:100) {
+  predicted_vals <- predicted[sample(1:nrow(predicted), size=1), ]
+  lines(density(predicted_vals), col="cyan3")
+}
+```
+
+```{r}
+get_bf <- function(parameter, coefficient_1, coefficient_2){
+  draws_1 <- refuge_fit$draws(glue(parameter,"[",coefficient_1,"]"), format="matrix")
+  draws_2 <- refuge_fit$draws(glue(parameter,"[",coefficient_2,"]"), format="matrix")
+  posterior_samples <- draws_1 - draws_2
+  posterior_mean <- mean(posterior_samples)
+  posterior_sd <- sd(posterior_samples)
+  
+  prior_mean <- 0
+  prior_sd <- sqrt(1^2 + 1^2) # 1 = prior sd
+  
+  posterior_prob <- dnorm(0, posterior_mean, posterior_sd)
+  prior_prob <- dnorm(0, prior_mean, prior_sd)
+  
+  bf <-  prior_prob / posterior_prob # Wagenmakers et al., 2010 explains how this works -- prior / posterior give prob of posterior.
+  bf
+}
+
+get_contrast <- function(parameter, coefficient_1, coefficient_2){
+  draws_1 <- refuge_fit$draws(glue(parameter,"[",coefficient_1,"]"), format="matrix")
+  draws_2 <- refuge_fit$draws(glue(parameter,"[",coefficient_2,"]"), format="matrix")
+  
+  median_contrast <- median(plogis(draws_1) - plogis(draws_2))
+  hdi_contrast <- hdi(plogis(draws_1) - plogis(draws_2))
+  
+  print(median_contrast)
+  print(hdi_contrast)
+}
+```
+
+
+
+```{r}
+1/get_bf("b_groupsize", 1, 2) # small vs intermediate
+get_bf("b_groupsize", 1, 3) # small vs large
+get_bf("b_groupsize", 2, 3) # intermediate vs large
+
+get_contrast("b_groupsize", 1, 2)
+get_contrast("b_groupsize", 1, 3)
+get_contrast("b_groupsize", 2, 3)
+```
+

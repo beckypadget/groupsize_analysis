@@ -1,0 +1,181 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(cmdstanr)
+library(glue)
+library(ggplot2)
+```
+
+
+```{r}
+times_data <- read.csv("../Tracking data/Updated/all_inspection_times_data.csv")
+length_data <- read.csv('../Tracking data/all_lengths_data.csv')
+
+times_data$pool_temp[times_data$Trial_ID == 'during-5-2911'] = 23.6
+times_data$pool_temp[times_data$Trial_ID == 'during-10-3011'] = 24
+times_data$pool_temp[times_data$Trial_ID == 'during-20-0212'] = 23.8
+times_data$pool_temp[times_data$Trial_ID == 'during-10-0312'] = 24.2
+times_data$pool_temp[times_data$Trial_ID == 'during-5-0412'] = 24.3
+times_data$pool_temp[times_data$Trial_ID == 'during-20-0612'] = 24.5
+times_data$pool_temp[times_data$Trial_ID == 'during-5-0712'] = 24.6
+times_data$pool_temp[times_data$Trial_ID == 'during-10-0812'] = 24.2
+times_data$pool_temp[times_data$Trial_ID == 'during-20-0912'] = 24.4
+times_data$pool_temp[times_data$Trial_ID == 'during-5-1012'] = 24.1
+times_data$pool_temp[times_data$Trial_ID == 'during-20-1112'] = 24.2
+times_data$pool_temp[times_data$Trial_ID == 'during-10-1212'] = 24.5
+times_data$pool_temp[times_data$Trial_ID == 'during-10-1312'] = 24
+times_data$pool_temp[times_data$Trial_ID == 'during-5-1412'] = 25
+times_data$pool_temp[times_data$Trial_ID == 'during-20-1512'] = 23.8
+
+times_data$fish_length[times_data$Trial_ID == 'during-5-2911'] = mean(length_data$Length[length_data$Date == '2911'])
+times_data$fish_length[times_data$Trial_ID == 'during-10-3011'] = mean(length_data$Length[length_data$Date == '3011'])
+times_data$fish_length[times_data$Trial_ID == 'during-20-0212'] = mean(length_data$Length[length_data$Date == '212'])
+times_data$fish_length[times_data$Trial_ID == 'during-10-0312'] = mean(length_data$Length[length_data$Date == '312'])
+times_data$fish_length[times_data$Trial_ID == 'during-5-0412'] = mean(length_data$Length[length_data$Date == '412'])
+times_data$fish_length[times_data$Trial_ID == 'during-5-0712'] = mean(length_data$Length[length_data$Date == '712'])
+times_data$fish_length[times_data$Trial_ID == 'during-20-0612'] = mean(length_data$Length[length_data$Date == '612'])
+times_data$fish_length[times_data$Trial_ID == 'during-10-0812'] = mean(length_data$Length[length_data$Date == '812'])
+times_data$fish_length[times_data$Trial_ID == 'during-20-0912'] = mean(length_data$Length[length_data$Date == '912'])
+times_data$fish_length[times_data$Trial_ID == 'during-5-1012'] = mean(length_data$Length[length_data$Date == '1012'])
+times_data$fish_length[times_data$Trial_ID == 'during-20-1112'] = mean(length_data$Length[length_data$Date == '1112'])
+times_data$fish_length[times_data$Trial_ID == 'during-10-1212'] = mean(length_data$Length[length_data$Date == '1212'])
+times_data$fish_length[times_data$Trial_ID == 'during-10-1312'] = mean(length_data$Length[length_data$Date == '1312'])
+times_data$fish_length[times_data$Trial_ID == 'during-5-1412'] = mean(length_data$Length[length_data$Date == '1412'])
+times_data$fish_length[times_data$Trial_ID == 'during-20-1512'] = mean(length_data$Length[length_data$Date == '1512'])
+
+times_data <- times_data %>% mutate(pool_temp_scaled = (pool_temp - mean(pool_temp))/sd(pool_temp), fish_length_scaled = (fish_length - mean(fish_length))/sd(fish_length))
+
+trial_levels <- c('during-5-2911', 'during-5-0412', 'during-5-0712', 'during-5-1012', 'during-5-1412',
+  'during-10-3011', 'during-10-0312', 'during-10-0812', 'during-10-1212', 'during-10-1312','during-20-0212',
+  'during-20-0612', 'during-20-0912', 'during-20-1112', 'during-20-1512')
+
+unique(times_data)
+
+```
+
+
+
+```{r}
+duration_data <- list(N = nrow(times_data),
+                   N_trials = length(unique(times_data$Trial_ID)),
+                   inspecting = times_data$Duration,
+                   groupsize_id = as.integer(factor(times_data$Group_size, levels = c("5", "10", "20"))),
+                   temp = times_data$pool_temp_scaled,
+                   fish_length = times_data$fish_length_scaled,
+                   trial_id = as.integer(factor(times_data$Trial_ID)))
+
+duration_model <- cmdstan_model("mod_duration--gamma.stan")
+duration_fit <- duration_model$sample(duration_data, parallel_chains = 4)
+
+```
+
+```{r}
+predicted <- duration_fit$draws("predicted", format="matrix")
+
+plot(density(duration_data$inspecting), col="black") # white for prior checks!
+for (i in 1:100) {
+  predicted_vals <- predicted[sample(1:nrow(predicted), size=1), ]
+  lines(density(predicted_vals), col="cyan3")
+}
+
+```
+
+```{r}
+get_bf <- function(parameter, coefficient_1, coefficient_2){
+  draws_1 <- duration_fit$draws(glue(parameter,"[",coefficient_1,"]"), format="matrix")
+  draws_2 <- duration_fit$draws(glue(parameter,"[",coefficient_2,"]"), format="matrix")
+  posterior_samples <- draws_1 - draws_2
+  posterior_mean <- mean(posterior_samples)
+  posterior_sd <- sd(posterior_samples)
+  
+  prior_mean <- 0
+  prior_sd <- sqrt(1^2 + 1^2) # 1 = prior sd
+  
+  posterior_prob <- dnorm(0, posterior_mean, posterior_sd)
+  prior_prob <- dnorm(0, prior_mean, prior_sd)
+  
+  bf <-  prior_prob / posterior_prob # Wagenmakers et al., 2010 explains how this works -- prior / posterior give prob of posterior.
+  bf
+}
+
+get_contrast <- function(parameter, coefficient_1, coefficient_2){
+  draws_1 <- duration_fit$draws(glue(parameter,"[",coefficient_1,"]"), format="matrix")
+  draws_2 <- duration_fit$draws(glue(parameter,"[",coefficient_2,"]"), format="matrix")
+  
+  median_contrast <- median(exp(draws_1) - exp(draws_2))
+  hdi_contrast <- hdi(exp(draws_1) - exp(draws_2), 0.89)
+  
+  print(median_contrast)
+  print(hdi_contrast)
+}
+```
+
+```{r}
+1/get_bf("b_groupsize", 1, 2)
+1/get_bf("b_groupsize", 1, 3)
+1/get_bf("b_groupsize", 2, 3)
+
+get_contrast("b_groupsize", 2, 1)
+get_contrast("b_groupsize", 3, 1)
+get_contrast("b_groupsize", 3, 2)
+```
+
+
+```{r}
+p_duration <- ggplot(times_data, aes(x=factor(Group_size), y=Duration)) + 
+  geom_boxplot() +
+  geom_boxplot(aes(fill=factor(Trial_ID, levels = trial_levels)), alpha=0.5) +
+  labs(x = "Group size",
+       y = "Inspection duration (s)",
+       fill="Trial ID") + 
+  theme(plot.title = element_text(size=15)) +
+  theme_classic()
+p_duration  #+ theme(axis.title = element_text(size=20), text=element_text(size=15))
+ggsave('p_duration.png', width=10, height=10)
+
+```
+
+```{r}
+library(patchwork)
+(p_num_inspections | p_duration) / (p_propwithin | p_mindist) + plot_layout(guides="collect")
+ggsave("all_full_plots.png", width=10, height=10)
+```
+
+```{r}
+get_bf_point <- function(coefficient){
+  draws <- duration_fit$draws(coefficient, format="matrix")
+  posterior_mean <- mean(draws)
+  posterior_sd <- sd(draws)
+  
+  prior_mean <- 0
+  prior_sd <- sqrt(1^2 + 1^2) # 1 = prior sd
+  
+  posterior_prob <- dnorm(0, posterior_mean, posterior_sd)
+  prior_prob <- dnorm(0, prior_mean, prior_sd)
+  
+  bf <-  prior_prob / posterior_prob # Wagenmakers et al., 2010 explains how this works -- prior / posterior give prob of posterior.
+  bf
+}
+```
+
+
+```{r}
+library(bayesplot)
+
+1/get_bf_point("b_temp")
+1/get_bf_point("b_fish_length")
+
+median(exp(duration_fit$draws("b_temp")))
+hdi(exp(duration_fit$draws("b_temp")), 0.89)
+
+median(exp(duration_fit$draws("b_fish_length")))
+hdi(exp(duration_fit$draws("b_fish_length")), 0.89)
+
+
+```
+
+
