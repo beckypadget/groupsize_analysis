@@ -1,0 +1,95 @@
+---
+title: "a_gaussproc"
+output: pdf_document
+---
+
+```{r}
+
+library(dplyr)
+trim_data
+
+library(cmdstanr)
+```
+trim_data$area[i] / ((150*150)/5)
+```{r}
+for (i in 1:nrow(trim_data)){
+  if (trim_data$group_size[i] == 5){
+    trim_data$area_scaled_by_null[i] = (trim_data$area[i]) * 0.25 / (150*150) # small groups automatically have larger 
+  }
+  else if (trim_data$group_size[i] == 10){
+    trim_data$area_scaled_by_null[i] = (trim_data$area[i]) * 0.5 / (150*150)
+  }
+  else if (trim_data$group_size[i] == 20){
+    trim_data$area_scaled_by_null[i] = (trim_data$area[i]) / (150*150)
+  }
+}
+
+# max(trim_data$area_scaled_by_null)
+# min(trim_data$area_scaled_by_null)
+# plot(density(trim_data$area_scaled_by_null))
+
+trim_data <- trim_data %>% group_by(group_size, phase) %>% mutate(groupsize_phase = cur_group_id())
+
+```
+
+```{r}
+# All groups
+
+modelling_data <- trim_data %>% group_by(trial_id, second, pool_temp_scaled, fish_length_scaled, phase, groupsize_phase, group_size) %>% summarise(area_median = median(area_scaled_by_null))
+
+test_data <- modelling_data[sample(nrow(modelling_data), 300, replace = FALSE, prob = NULL),]
+
+# model_data <- list(N = nrow(modelling_data),
+#                    x = modelling_data$second,
+#                    y = modelling_data$area_median,
+#                    phase = as.integer(factor(modelling_data$phase)),
+#                    groupsize_phase = as.integer(factor(modelling_data$groupsize_phase)),
+#                    group_size = as.integer(factor(modelling_data$group_size)),
+#                    pool_temp = modelling_data$pool_temp_scaled,
+#                    fish_length = modelling_data$fish_length_scaled,
+#                    trial_id = as.integer(factor(modelling_data$trial_id)),
+#                    priors_only = 0)
+
+model_data <- list(N = nrow(test_data),
+                   x = test_data$second,
+                   y = test_data$area_median,
+                   phase = as.integer(factor(test_data$phase)),
+                   groupsize_phase = as.integer(factor(test_data$groupsize_phase)),
+                   group_size = as.integer(factor(test_data$group_size)),
+                   pool_temp = test_data$pool_temp_scaled,
+                   fish_length = test_data$fish_length_scaled,
+                   trial_id = as.integer(factor(test_data$trial_id)),
+                   priors_only = 0)
+
+```
+
+
+
+```{r}
+gaussproc_mod <- cmdstan_model("m_betagaussproc_edited_gs.stan")
+# gaussproc_mod <- cmdstan_model("m_baremin_gaussproc.stan")
+
+gaussproc_fit <- gaussproc_mod$sample(model_data, parallel_chains = 4)
+
+```
+
+```{r}
+gaussproc_fit$summary()
+```
+
+## Check predictions
+```{r}
+predicted <- gaussproc_fit$draws("y_predicted", format="matrix")
+
+plot(density(model_data$y), col="black") # white for prior checks!
+for (i in 1:100) {
+  predicted_vals <- predicted[sample(1:nrow(predicted), size=1), ]
+  lines(density(predicted_vals), col="cyan3")
+}
+```
+
+```{r}
+library(ggplot2)
+ggplot(trim_data, aes(x=second, y = area_scaled,color=factor(trial_id))) + 
+  geom_point()
+```
