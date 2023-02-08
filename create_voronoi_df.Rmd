@@ -1,0 +1,249 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r cars}
+# Data wrangling
+library(deldir)
+library(tidyverse)
+library(glue)
+
+# Modelling
+library(cmdstanr)
+
+# Plotting
+library(ggplot2)
+library(ggforce)
+library(wesanderson)
+library(patchwork)
+colour_pal <- wes_palette("GrandBudapest1", n=3)
+
+
+```
+
+## Load and sort data
+### BEFORE
+```{r}
+b_track_data <- read.csv('../../Before data/before-all_binned_data.csv') #Before data
+b_tracks <- b_track_data %>% select(Second, ANGLE, SPEED, X, Y, Fish_ID, Group_size, Trial_ID)
+b_sec_counts <- b_tracks %>% group_by(Trial_ID, Second) %>% summarise(count = n_distinct(Fish_ID))
+
+b_trial_levels <- c('b-5-2911', 'b-5-0412', 'b-5-1012','b-5-0712', 'b-5-1412',
+  'b-10-3011', 'b-10-0312', 'b-10-0812', 'b-10-1212', 'b-10-1312',
+  'b-20-0212', 'b-20-0612', 'b-20-0912', 'b-20-1112', 'b-20-1512')
+
+```
+
+### DURING
+```{r}
+track_data <- read.csv('../../Tracking data/Updated/all_binned_data.csv') #During data
+tracks <- track_data %>% select(Second, ANGLE, SPEED, X, Y, Fish_ID, Group_size, Trial_ID)
+sec_counts <- tracks %>% group_by(Trial_ID, Second) %>% summarise(count = n_distinct(Fish_ID))
+
+trial_levels <- c('during-5-2911', 'during-5-0412', 'during-5-0712', 'during-5-1012', 'during-5-1412',
+  'during-10-3011', 'during-10-0312', 'during-10-0812', 'during-10-1212', 'during-10-1312',
+  'during-20-0212', 'during-20-0612', 'during-20-0912', 'during-20-1112', 'during-20-1512')
+```
+
+## Functions to generate voronois from positional data
+```{r}
+get_voronoi_stats <- function(data, trial_id, second){
+   temp_tracks_df <- data %>% filter(Trial_ID == trial_id, Second == second)
+   tesselation <- tryCatch({deldir(temp_tracks_df$X, temp_tracks_df$Y)}, 
+                           warning = function(warn) {
+                             print(paste("MY WARNING: ", warn))
+                           }, error = function(cnd) {
+                               return(NULL)
+                             })
+   return(tesselation$summary)
+}
+
+get_first_nsecs <- function(data, trial, n){
+  second <- c()
+  area <- c()
+  group_size <- c()
+  trial_id <- c()
+  # fish_id <- c()
+  # speed <- c()
+  for (i in 1:n){
+    # mini_df <- data %>% filter(Trial_ID == trial, Second == i)
+    voronoi_stats_df <- get_voronoi_stats(data, trial, i)
+    area <- c(area, voronoi_stats_df$dir.area)
+    second <- c(second, rep(i, length(voronoi_stats_df$dir.area)))
+    gs <- as.integer(data %>% filter(Trial_ID==trial) %>% distinct(Group_size))
+    group_size <- c(group_size, rep(gs, length(voronoi_stats_df$dir.area)))
+    trial_id <- c(trial_id, rep(trial, length(voronoi_stats_df$dir.area)))
+
+  }
+  # df <- data.frame(second, area, group_size, trial_id, fish_id, speed)
+  df <- data.frame(second, area, group_size, trial_id)
+
+  return(df)
+}
+
+
+
+```
+
+## Generate voronois from positional data
+```{r}
+nsecs <- max(b_tracks$Second)
+
+b_vor_20_1512_full <- get_first_nsecs(b_tracks, 'b-20-1512', nsecs)
+b_vor_20_1112_full <- get_first_nsecs(b_tracks, 'b-20-1112', nsecs)
+b_vor_20_0912_full <- get_first_nsecs(b_tracks, 'b-20-0912', nsecs)
+b_vor_20_0612_full <- get_first_nsecs(b_tracks, 'b-20-0612', nsecs)
+b_vor_20_0212_full <- get_first_nsecs(b_tracks, 'b-20-0212', nsecs)
+
+b_vor_10_3011_full <- get_first_nsecs(b_tracks, 'b-10-3011', nsecs)
+b_vor_10_0812_full <- get_first_nsecs(b_tracks, 'b-10-0812', nsecs)
+b_vor_10_0312_full <- get_first_nsecs(b_tracks, 'b-10-0312', nsecs)
+b_vor_10_1312_full <- get_first_nsecs(b_tracks, 'b-10-1312', nsecs)
+b_vor_10_1212_full <- get_first_nsecs(b_tracks, 'b-10-1212', nsecs)
+
+b_vor_5_2911_full <- get_first_nsecs(b_tracks, 'b-5-2911', nsecs)
+b_vor_5_1412_full <- get_first_nsecs(b_tracks, 'b-5-1412', nsecs)
+b_vor_5_1012_full <- get_first_nsecs(b_tracks, 'b-5-1012', nsecs)
+b_vor_5_0412_full <- get_first_nsecs(b_tracks, 'b-5-0412', nsecs)
+b_vor_5_0712_full <- get_first_nsecs(b_tracks, 'b-5-0712', nsecs)
+
+
+b_vor_full_df <- rbind(b_vor_20_1512_full, b_vor_20_1112_full, b_vor_20_0912_full, b_vor_20_0612_full, b_vor_20_0212_full,
+                      b_vor_10_3011_full, b_vor_10_0312_full, b_vor_10_1212_full, b_vor_10_1312_full, b_vor_10_0812_full,
+                      b_vor_5_2911_full, b_vor_5_1412_full, b_vor_5_1012_full, b_vor_5_0712_full, b_vor_5_0412_full)
+
+b_vor_full_df$phase <- rep("before", times=nrow(b_vor_full_df))
+```
+
+```{r}
+nsecs <- max(tracks$Second)
+
+vor_20_1512_full <- get_first_nsecs(tracks, 'during-20-1512', nsecs)
+vor_20_1112_full <- get_first_nsecs(tracks, 'during-20-1112', nsecs)
+vor_20_0912_full <- get_first_nsecs(tracks, 'during-20-0912', nsecs)
+vor_20_0612_full <- get_first_nsecs(tracks, 'during-20-0612', nsecs)
+vor_20_0212_full <- get_first_nsecs(tracks, 'during-20-0212', nsecs)
+
+vor_10_3011_full <- get_first_nsecs(tracks, 'during-10-3011', nsecs)
+vor_10_0812_full <- get_first_nsecs(tracks, 'during-10-0812', nsecs)
+vor_10_0312_full <- get_first_nsecs(tracks, 'during-10-0312', nsecs)
+vor_10_1312_full <- get_first_nsecs(tracks, 'during-10-1312', nsecs)
+vor_10_1212_full <- get_first_nsecs(tracks, 'during-10-1212', nsecs)
+
+vor_5_2911_full <- get_first_nsecs(tracks, 'during-5-2911', nsecs)
+vor_5_1412_full <- get_first_nsecs(tracks, 'during-5-1412', nsecs)
+vor_5_1012_full <- get_first_nsecs(tracks, 'during-5-1012', nsecs)
+vor_5_0412_full <- get_first_nsecs(tracks, 'during-5-0412', nsecs)
+vor_5_0712_full <- get_first_nsecs(tracks, 'during-5-0712', nsecs)
+
+vor_full_df <- rbind(vor_20_1512_full, vor_20_1112_full, vor_20_0912_full, vor_20_0612_full, vor_20_0212_full, 
+                      vor_10_3011_full, vor_10_0312_full, vor_10_1312_full, vor_10_0812_full, vor_10_1212_full,
+                      vor_5_2911_full, vor_5_1412_full, vor_5_1012_full, vor_5_0412_full, vor_5_0712_full)
+
+vor_full_df$phase <- rep("during", times=nrow(vor_full_df))
+```
+
+## Add lengths and pool temperatures to the data frames
+```{r}
+# Get fish lengths
+length_data <- read.csv('../../Tracking data/all_lengths_data.csv')
+
+# BEFORE
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-5-2911'] = 23.6
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-10-3011'] = 24
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-20-0212'] = 23.8
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-10-0312'] = 24.2
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-5-0412'] = 24.3
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-20-0612'] = 24.5
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-5-0712'] = 24.5
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-10-0812'] = 24.2
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-20-0912'] = 24.4
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-5-1012'] = 24.1
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-20-1112'] = 24.2
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-10-1212'] = 24.5
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-10-1312'] = 24
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-5-1412'] = 25
+b_vor_full_df$pool_temp[b_vor_full_df$trial_id == 'b-20-1512'] = 23.8
+
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-5-2911'] = mean(length_data$Length[length_data$Date == '2911'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-10-3011'] = mean(length_data$Length[length_data$Date == '3011'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-20-0212'] = mean(length_data$Length[length_data$Date == '212'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-10-0312'] = mean(length_data$Length[length_data$Date == '312'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-5-0412'] = mean(length_data$Length[length_data$Date == '412'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-20-0612'] = mean(length_data$Length[length_data$Date == '612'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-5-0712'] = mean(length_data$Length[length_data$Date == '712'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-10-0812'] = mean(length_data$Length[length_data$Date == '812'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-20-0912'] = mean(length_data$Length[length_data$Date == '912'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-5-1012'] = mean(length_data$Length[length_data$Date == '1012'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-20-1112'] = mean(length_data$Length[length_data$Date == '1112'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-10-1212'] = mean(length_data$Length[length_data$Date == '1212'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-10-1312'] = mean(length_data$Length[length_data$Date == '1312'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-5-1412'] = mean(length_data$Length[length_data$Date == '1412'])
+b_vor_full_df$fish_length[b_vor_full_df$trial_id == 'b-20-1512'] = mean(length_data$Length[length_data$Date == '1512'])
+
+# DURING
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-5-2911'] = 23.6
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-10-3011'] = 24
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-20-0212'] = 23.8
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-10-0312'] = 24.2
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-5-0412'] = 24.3
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-20-0612'] = 24.5
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-5-0712'] = 24.3
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-10-0812'] = 24.2
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-20-0912'] = 24.4
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-5-1012'] = 24.1
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-20-1112'] = 24.2
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-10-1212'] = 24.5
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-10-1312'] = 24
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-5-1412'] = 25
+vor_full_df$pool_temp[vor_full_df$trial_id == 'during-20-1512'] = 23.8
+
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-5-2911'] = mean(length_data$Length[length_data$Date == '2911'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-10-3011'] = mean(length_data$Length[length_data$Date == '3011'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-20-0212'] = mean(length_data$Length[length_data$Date == '212'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-10-0312'] = mean(length_data$Length[length_data$Date == '312'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-5-0412'] = mean(length_data$Length[length_data$Date == '412'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-20-0612'] = mean(length_data$Length[length_data$Date == '612'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-5-0712'] = mean(length_data$Length[length_data$Date == '712'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-10-0812'] = mean(length_data$Length[length_data$Date == '812'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-20-0912'] = mean(length_data$Length[length_data$Date == '912'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-5-1012'] = mean(length_data$Length[length_data$Date == '1012'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-20-1112'] = mean(length_data$Length[length_data$Date == '1112'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-10-1212'] = mean(length_data$Length[length_data$Date == '1212'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-10-1312'] = mean(length_data$Length[length_data$Date == '1312'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-5-1412'] = mean(length_data$Length[length_data$Date == '1412'])
+vor_full_df$fish_length[vor_full_df$trial_id == 'during-20-1512'] = mean(length_data$Length[length_data$Date == '1512'])
+```
+
+```{r}
+full_data <- rbind(b_vor_full_df, vor_full_df)
+full_data$pool_temp_scaled <- as.numeric(scale(full_data$pool_temp))
+full_data$fish_length_scaled <- as.numeric(scale(full_data$fish_length))
+
+full_data$trial_id <- stri_sub(full_data$trial_id, -4) # get the date bit off the end of the trial ID
+full_data <- full_data %>% group_by(group_size, phase) %>% mutate(groupsize_phase = cur_group_id()) # do group sizes respond to phase differently?
+full_data <- full_data %>% group_by(second, phase) %>% mutate(sec_phase = cur_group_id()) # does time in the pool affect response differently in each phase?
+full_data$area_scaled <- full_data$area/(150*150)
+
+
+#### Find seconds where all fish are visible (so polygon areas are accurate!)
+vis_count <- full_data %>% group_by(group_size, trial_id, phase, second) %>% summarise(count = n())
+
+all_vis_sec <- c()
+all_vis_trial <- c()
+all_vis_phase <- c()
+for (i in 1:nrow(vis_count)){
+  if (vis_count$count[i] == vis_count$group_size[i]){
+    all_vis_sec <- c(all_vis_sec, vis_count$second[i])
+    all_vis_trial <- c(all_vis_trial, vis_count$trial_id[i])
+    all_vis_phase <- c(all_vis_phase, vis_count$phase[i])
+  }
+}
+
+trial_and_sec <- data.frame(trial_id=all_vis_trial, phase = all_vis_phase, second = all_vis_sec)
+colnames(trial_and_sec) <- c("trial_id", "phase", "second")
+
+trim_data <- left_join(trial_and_sec, full_data)
+```
+
