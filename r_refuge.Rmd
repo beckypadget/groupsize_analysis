@@ -8,6 +8,10 @@ library(dplyr)
 library(ggplot2)
 ```
 
+```{r}
+inspection_data <- read.csv("all_inspection_data.csv")
+all_refuge_data <- read.csv("all_refuge_data.csv")
+```
 
 ```{r}
 inspection_data$Time_refuge <- 1 - (inspection_data$Total_time / 420) # 1 - (time not in refuge / total time)
