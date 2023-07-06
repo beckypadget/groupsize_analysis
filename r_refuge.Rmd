@@ -38,7 +38,7 @@ refuge_model_data <- list(
   priors_only = 0
 )
 
-refuge_model <- cmdstan_model('mod_inspection.stan')
+refuge_model <- cmdstan_model('m_refuge_beta.stan')
 refuge_fit <- refuge_model$sample(refuge_model_data, parallel_chains = 4, refresh = 500)
 
 ```
