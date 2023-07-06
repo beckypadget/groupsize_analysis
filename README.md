@@ -11,8 +11,8 @@ Data are available on Dryad: [https://doi.org/10.5061/dryad.2fqz612v3](https://d
 * R packages: `tidyverse`, `cmdstanr`, `ggplot2`, `patchwork`, `glue`, `bayestestR`
 
 ### Types of files
-* .Rmd files are R markdown notebooks containing code to format data and run models
-* .stan files are the models themselves
+* .Rmd files beginning `r_` are R markdown notebooks containing code to format data and run models
+* .stan files beginning `m_` are the models themselves
 
 ## References
 [Wagenmakers, E.J., Lodewyckx, T., Kuriyal, H. and Grasman, R., 2010. Bayesian hypothesis testing for psychologists: A tutorial on the Savage–Dickey method. Cognitive psychology, 60(3), pp.158-189.](chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://www.ejwagenmakers.com/2010/WagenmakersEtAlCogPsy2010.pdf)
