@@ -68,7 +68,7 @@ duration_data <- list(N = nrow(times_data),
                    fish_length = times_data$fish_length_scaled,
                    trial_id = as.integer(factor(times_data$Trial_ID)))
 
-duration_model <- cmdstan_model("mod_duration--gamma.stan")
+duration_model <- cmdstan_model("m_duration_gamma.stan")
 duration_fit <- duration_model$sample(duration_data, parallel_chains = 4)
 
 ```
