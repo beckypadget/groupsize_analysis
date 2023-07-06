@@ -27,12 +27,8 @@ transformed parameters{
 
 model{
   min_dist ~ gamma(alpha, alpha ./ exp(log_mu));
-  // priors
-  // intercept_mu ~ normal(0, 1);
-  // intercept_alpha ~ normal(-1.5, 1);
   b_groupsize ~ normal(0, 1);
   alpha ~ normal(0, 1);
-  // bv_groupsize ~ normal(0,1);
   b_temp ~ normal(0, 1);
   z_trial ~ normal(0, z_sigma);
   z_sigma ~ normal(0, 1);
