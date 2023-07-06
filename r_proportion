@@ -67,7 +67,7 @@ proptime_model_data <- list(N = nrow(inspection_data),
                    kappa_prior = 10,
                    priors_only = 0)
 
-proptime_model <- cmdstan_model("mod_proptime--beta.stan")
+proptime_model <- cmdstan_model("m_proportion_beta.stan")
 proptime_fit <- proptime_model$sample(proptime_model_data, parallel_chains = 4, refresh=500, step_size=0.1)
 
 ```
