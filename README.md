@@ -10,7 +10,7 @@ Data are available on Dryad: [https://doi.org/10.5061/dryad.2fqz612v3](https://d
 * R (we used version 4.2.2)
 * R packages: `tidyverse`, `cmdstanr`, `ggplot2`, `patchwork`, `glue`, `bayestestR`
 
-### Types of files
+### Types of files
 * .Rmd files beginning `r_` are R markdown notebooks containing code to format data and run models
 * .stan files beginning `m_` are the models themselves
 
