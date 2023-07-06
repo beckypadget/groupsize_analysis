@@ -17,12 +17,6 @@ inspection_data$Time_refuge <- 1 - (inspection_data$Total_time / 420) # 1 - (tim
 all_refuge_data$Trial_Date <- str_sub(all_refuge_data$Trial_ID, start=-4)
 ```
 
-
-```{r}
-ggplot(inspection_data, aes(x = factor(Group_size), y = Time_refuge)) +
-  geom_boxplot()
-```
-
 ```{r}
 refuge_model_data <- list(
   N = nrow(inspection_data),
