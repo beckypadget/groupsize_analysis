@@ -12,8 +12,8 @@ library(ggplot2)
 ```
 
 ```{r}
-inspection_data <- read.csv("../Tracking data/Updated/all_inspection_data.csv")
-length_data <- read.csv('../Tracking data/all_lengths_data.csv')
+inspection_data <- read.csv("all_inspection_data.csv")
+length_data <- read.csv('all_lengths_data.csv')
 inspection_data$Time_refuge <- 1 - (inspection_data$Total_time / 420) # 1 - (time not in refuge / total time)
 
 
