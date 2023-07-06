@@ -12,8 +12,8 @@ library(ggplot2)
 
 
 ```{r}
-times_data <- read.csv("../Tracking data/Updated/all_inspection_times_data.csv")
-length_data <- read.csv('../Tracking data/all_lengths_data.csv')
+times_data <- read.csv("all_inspection_times_data.csv")
+length_data <- read.csv("all_lengths_data.csv")
 
 times_data$pool_temp[times_data$Trial_ID == 'during-5-2911'] = 23.6
 times_data$pool_temp[times_data$Trial_ID == 'during-10-3011'] = 24
