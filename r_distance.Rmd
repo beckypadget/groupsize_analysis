@@ -63,7 +63,7 @@ distance_model_data <- list(N = nrow(inspection_data),
                    fish_length = inspection_data$fish_length_scaled,
                    trial_id = as.integer(factor(inspection_data$Trial_ID)))
 
-distance_model <- cmdstan_model("mod_mindist.stan")
+distance_model <- cmdstan_model("m_distance_gamma.stan")
 distance_fit <- inspection_model$sample(distance_model_data, parallel_chains = 4, refresh=500)
 
 ```
