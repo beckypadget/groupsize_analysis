@@ -3,12 +3,6 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-```{r}
-ggplot(inspection_data, aes(x=Time_refuge, y=N_inpsections, color=factor(Group_size))) +
-  geom_point()
-
-```
-
 
 ```{r}
 library(dplyr)
