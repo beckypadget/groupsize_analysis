@@ -1,6 +1,6 @@
 # Group size and cooperation in Trinidadian guppies.
 
-Analysis (and data wrangling) code for analysis of data from an experiment to investigate the effects of group size on cooperative behaviour in Trinidadian guppies. This is now published and can be accessed at: [https://doi.org/10.1098/rspb.20230790](https://doi.org/10.1098/rspb.20230790).
+Analysis (and data wrangling) code for analysis of data from an experiment to investigate the effects of group size on cooperative behaviour in Trinidadian guppies. This is now published and can be accessed at: [https://doi.org/10.1098/rspb.20230790](https://doi.org/10.1098/rspb.2023.0790).
 
 ## Data availability
 Data are available on Dryad: [https://doi.org/10.5061/dryad.2fqz612v3](https://doi.org/10.5061/dryad.2fqz612v3).
