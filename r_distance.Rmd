@@ -12,8 +12,8 @@ library(bayestestR)
 
 
 ```{r}
-inspection_data <- read.csv("../Tracking data/Updated/all_inspection_data.csv")
-length_data <- read.csv('../Tracking data/all_lengths_data.csv')
+inspection_data <- read.csv("all_inspection_data.csv")
+length_data <- read.csv("all_lengths_data.csv")
 
 inspection_data$pool_temp[inspection_data$Trial_ID == 'during-5-2911'] = 23.6
 inspection_data$pool_temp[inspection_data$Trial_ID == 'during-10-3011'] = 24
