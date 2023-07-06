@@ -77,7 +77,7 @@ inspection_model_data <- list(N = nrow(inspection_data), M = 5,
                    fish_length = inspection_data$fish_length_scaled,
                    trial_id = as.integer(factor(inspection_data$Trial_ID)))
 
-inspection_model <- cmdstan_model("mod_n_inspections--poisson.stan")
+inspection_model <- cmdstan_model("m_inspections_poisson.stan")
 inspection_fit <- inspection_model$sample(inspection_model_data, parallel_chains = 4, refresh=500)
 
 ```
