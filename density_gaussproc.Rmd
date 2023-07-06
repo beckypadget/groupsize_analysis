@@ -49,9 +49,7 @@ for (i in 1:nrow(test_data)){
 ```
 
 ```{r}
-model <- cmdstanr::cmdstan_model("m_baremin_gaussproc.stan") # beta
-# model <- cmdstanr::cmdstan_model("m_gaussian_gaussproc.stan") # normal
-
+model <- cmdstanr::cmdstan_model("m_gaussproc.stan") # beta
 
 model_data <- list(
   num_timesteps = num_timesteps,
